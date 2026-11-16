@@ -1,0 +1,50 @@
+@Test
+void shouldNotRetryOnHardBounceReportedViaFailedMessages() throws AddressException {
+    var message = new MimeMessage((Session) null);
+    when(javaMailSender.createMimeMessage()).thenReturn(message);
+
+    var smtp550 = new SMTPAddressFailedException(
+            new InternetAddress("invalid@xxx.com"), "RCPT TO", 550, "550 5.1.1 User unknown");
+    var failed = new LinkedHashMap<Object, Exception>();
+    failed.put(message, new SendFailedException("Invalid Addresses", smtp550));
+
+    doThrow(new MailSendException(failed))
+            .when(javaMailSender).send(any(MimeMessage.class));
+
+    assertFalse(emailPort.sendEmail("from@xxx.com", "invalid@xxx.com", "Subject", "Body"));
+    verify(javaMailSender, times(1)).send(any(MimeMessage.class));
+}
+
+public class PermanentMailFailureException extends MailException {
+    public PermanentMailFailureException(String msg, Throwable cause) {
+        super(msg, cause);
+    }
+}https://github.com/zgmtuan/aicoding/tree/main
+
+try {
+    javaMailSender.send(mimeMessage);
+} catch (MailSendException e) {
+    if (isPermanentFailure(e)) {
+        throw new PermanentMailFailureException("Permanent SMTP failure", e);
+    }
+    throw e; 
+}
+
+
+private static boolean isPermanentFailure(MailSendException ex) {
+    List<Throwable> roots = new ArrayList<>(List.of(ex.getMessageExceptions()));
+    if (ex.getCause() != null) {
+        roots.add(ex.getCause());
+    }
+    for (Throwable root : roots) {
+        for (Throwable t = root; t != null; t = t.getCause()) {
+            if (t instanceof SMTPAddressFailedException a && a.getReturnCode() >= 500) {
+                return true;
+            }
+            if (t instanceof SMTPSendFailedException s && s.getReturnCode() >= 500) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
